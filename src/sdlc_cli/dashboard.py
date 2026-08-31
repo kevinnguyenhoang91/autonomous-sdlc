@@ -181,6 +181,9 @@ def _make_handler(ws_port: int) -> type:
                             self.send_header("Content-Type", "application/javascript")
                         else:
                             self.send_header("Content-Type", self.guess_type(str(filepath)))
+                        # No caching: the app JS is the single source of truth
+                        # for dashboard logic and may change between versions.
+                        self.send_header("Cache-Control", "no-cache")
                         self.end_headers()
                         with open(filepath, 'rb') as f:
                             self.wfile.write(f.read())

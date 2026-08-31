@@ -1,3 +1,8 @@
+/* SDLC Agent Dashboard — single-source application JS (ADR-012).
+ * Served at /static/dashboard.js and loaded by the inline dashboard HTML.
+ * Keep in sync with nothing: this file is the only copy. */
+'use strict';
+
 const PHASE_NAMES = {
   '0-problem-discovery':'Problem Discovery','1-bootstrap':'Bootstrap','2-product':'Product',
   '3-story-tasks':'Story-Tasks','4-architecture':'Architecture','5-design':'Design',
@@ -17,8 +22,101 @@ let reconnectTimer;
 let PHASE_ENABLED = {};
 function phaseDisabled(key) { return PHASE_ENABLED[key] === false; }
 
+/* ------------------------------------------------------------------ */
+/* DiagramView — zoom & pan for the agent diagram (ADR-013).           */
+/* Wheel zooms toward the cursor, drag pans, toolbar buttons provide   */
+/* pointer-free access. State lives here so it survives live          */
+/* re-renders (renderMermaid reapplies the transform).                  */
+/* ------------------------------------------------------------------ */
+const DiagramView = (() => {
+  const MIN_K = 0.05, MAX_K = 4.0;   // zoom clamp 5%..400% (single source)
+  const state = { x: 0, y: 0, k: 1 };
+  let canvas = null;
+
+  function viewport() { return document.getElementById('diagramViewport'); }
+  function getCanvas() {
+    if (!canvas) canvas = document.getElementById('diagramCanvas');
+    return canvas;
+  }
+  function clamp(k) { return Math.min(MAX_K, Math.max(MIN_K, k)); }
+
+  function apply() {
+    const c = getCanvas();
+    if (!c) return;
+    c.style.transform = 'translate(' + state.x + 'px,' + state.y + 'px) scale(' + state.k + ')';
+  }
+
+  /* Zoom by `factor`, keeping viewport point (cx, cy) fixed. */
+  function zoomAt(cx, cy, factor) {
+    const k2 = clamp(state.k * factor);
+    const f = k2 / state.k;
+    state.x = cx - (cx - state.x) * f;
+    state.y = cy - (cy - state.y) * f;
+    state.k = k2;
+    apply();
+  }
+
+  function zoomBy(factor) {
+    const vp = viewport();
+    const cx = vp ? vp.clientWidth / 2 : 0;
+    const cy = vp ? vp.clientHeight / 2 : 0;
+    zoomAt(cx, cy, factor);
+  }
+
+  function panBy(dx, dy) { state.x += dx; state.y += dy; apply(); }
+
+  function fitWidth() {
+    const vp = viewport();
+    const c = getCanvas();
+    if (!vp || !c || c.scrollWidth < 1) return;
+    state.k = clamp(vp.clientWidth / c.scrollWidth);
+    state.x = 0;
+    state.y = 0;
+    apply();
+  }
+
+  function reset() { state.x = 0; state.y = 0; state.k = 1; apply(); }
+
+  function init() {
+    const vp = viewport();
+    canvas = getCanvas();
+    if (!vp || !canvas) return;
+
+    vp.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = vp.getBoundingClientRect();
+      zoomAt(e.clientX - rect.left, e.clientY - rect.top,
+             e.deltaY < 0 ? 1.15 : 1 / 1.15);
+    }, { passive: false });
+
+    let dragging = false, lastX = 0, lastY = 0;
+    canvas.addEventListener('pointerdown', (e) => {
+      dragging = true; lastX = e.clientX; lastY = e.clientY;
+      canvas.classList.add('dragging');
+      canvas.setPointerCapture(e.pointerId);
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      panBy(e.clientX - lastX, e.clientY - lastY);
+      lastX = e.clientX; lastY = e.clientY;
+    });
+    const stopDrag = () => { dragging = false; canvas.classList.remove('dragging'); };
+    canvas.addEventListener('pointerup', stopDrag);
+    canvas.addEventListener('pointercancel', stopDrag);
+    canvas.addEventListener('dblclick', reset);
+
+    document.getElementById('zoomInBtn').addEventListener('click', () => zoomBy(1.25));
+    document.getElementById('zoomOutBtn').addEventListener('click', () => zoomBy(0.8));
+    document.getElementById('zoomFitBtn').addEventListener('click', fitWidth);
+    document.getElementById('zoomResetBtn').addEventListener('click', reset);
+  }
+
+  return { init, apply, reset, fitWidth };
+})();
+
 function connect() {
-  const wsPort = /*WS_PORT*/8421;
+  // The HTML bootstrap injects the actual WS port (server-substituted).
+  const wsPort = window.WS_PORT || 8421;
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(proto + '://' + location.hostname + ':' + wsPort + '/ws');
 
@@ -372,7 +470,7 @@ function renderActivity(lines) {
     const esc = escHtml(l);
     // Bold markdown headers
     if (l.startsWith('## ')) return '<div class="activity-line"><strong>' + esc.slice(3) + '</strong></div>';
-    if (l.startsWith('- **')) return '<div class="activity-line">' + esc.replace(/\\*\\*/g, '') + '</div>';
+    if (l.startsWith('- **')) return '<div class="activity-line">' + esc.replace(/\*\*/g, '') + '</div>';
     return '<div class="activity-line">' + esc + '</div>';
   }).join('');
   el.scrollTop = el.scrollHeight;
@@ -398,7 +496,8 @@ try {
 
 let lastMermaidSrc = '';
 async function renderMermaid(src) {
-  const el = document.getElementById('mermaidDiagram');
+  const el = document.getElementById('diagramCanvas');
+  if (!el) return;
   if (!src) {
     el.innerHTML = '<span class="no-data">No diagram data.</span>';
     return;
@@ -412,6 +511,8 @@ async function renderMermaid(src) {
   try {
     const { svg } = await mermaid.render('agentDiagram', src);
     el.innerHTML = svg;
+    // Reapply persisted zoom/pan so live updates never reset the user's view.
+    DiagramView.apply();
   } catch(e) {
     console.error('Mermaid render error:', e);
     el.innerHTML = '<span class="no-data">Diagram render error. Check console.</span>';
@@ -420,7 +521,8 @@ async function renderMermaid(src) {
 
 function basename(path) { return path.split('/').pop(); }
 function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+DiagramView.init();
 connect();
