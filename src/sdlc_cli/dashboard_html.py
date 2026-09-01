@@ -140,6 +140,35 @@ DASHBOARD_HTML = """\
     color: var(--dim); white-space: pre-wrap; max-height: 200px; overflow-y: auto;
   }
 
+  /* Diagram legend, toolbar, zoomable viewport */
+  .diagram-legend {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    font-size: 12px; color: var(--dim); margin-bottom: 8px;
+  }
+  .legend-swatch {
+    display: inline-block; width: 12px; height: 12px; border-radius: 3px;
+    margin-right: 5px; vertical-align: -1px; border: 1px solid var(--border);
+  }
+  .legend-swatch.done { background: #238636; border-color: #3fb950; }
+  .legend-swatch.active { background: #9e6a03; border-color: #d29922; }
+  .legend-swatch.pending { background: #21262d; }
+  .legend-edge {
+    display: inline-block; width: 24px; height: 0;
+    border-top: 3px solid var(--blue); margin-right: 5px; vertical-align: 3px;
+  }
+  .diagram-toolbar { display: flex; gap: 6px; margin-bottom: 8px; }
+  .diagram-toolbar button {
+    background: var(--bg3); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer;
+  }
+  .diagram-toolbar button:hover { border-color: var(--blue); }
+  #diagramViewport {
+    position: relative; overflow: auto; max-height: 75vh;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  }
+  #diagramCanvas { transform-origin: 0 0; cursor: grab; display: inline-block; }
+  #diagramCanvas.dragging { cursor: grabbing; }
+
   /* Responsive */
   @media (max-width: 900px) {
     .grid { grid-template-columns: 1fr; }
@@ -218,12 +247,29 @@ DASHBOARD_HTML = """\
   <!-- Full width: Mermaid agent interaction diagram -->
   <div class="card" style="grid-column: 1 / -1;">
     <div class="card-title">Agent Interaction Diagram</div>
-    <div id="mermaidDiagram" style="overflow-x:auto; padding:12px;">
-      <span class="no-data">Loading diagram...</span>
+    <div class="diagram-legend" id="diagramLegend">
+      <span><span class="legend-swatch done"></span>Complete</span>
+      <span><span class="legend-swatch active"></span>In progress</span>
+      <span><span class="legend-swatch pending"></span>Pending</span>
+      <span><span class="legend-edge"></span>Phase sequence</span>
+    </div>
+    <div class="diagram-toolbar">
+      <button id="zoomInBtn" type="button" title="Zoom in">+</button>
+      <button id="zoomOutBtn" type="button" title="Zoom out">&minus;</button>
+      <button id="zoomFitBtn" type="button" title="Fit to width">Fit</button>
+      <button id="zoomResetBtn" type="button" title="Reset zoom (100%)">100%</button>
+    </div>
+    <div id="diagramViewport" style="overflow:auto; padding:12px;">
+      <div id="diagramCanvas">
+        <span class="no-data">Loading diagram...</span>
+      </div>
     </div>
   </div>
 </div>
 
+<script>
+window.WS_PORT = /*WS_PORT*/8421;
+</script>
 <script src="/static/dashboard.js"></script>
 </body>
 </html>
