@@ -115,12 +115,6 @@ def generate_mermaid(
             sub_nid = _node_id(sub)
             sub_model = model_map.get(sub, "")
             sub_suffix = f"<br/><i>{sub_model}</i>" if sub_model else ""
-            sub_status = "pending"
-            if status == "complete":
-                sub_status = "complete"
-            elif sub in trace_map:
-                sub_status = trace_map[sub].get("status", "pending")
-            sub_cls = _status_class(sub_status)
             lines.append(f"        {sub_nid}[\"⚙️ {sub}{sub_suffix}\"]")
             lines.append(f"        {nid} --> {sub_nid}")
 
@@ -131,11 +125,11 @@ def generate_mermaid(
     # Only enabled phases participate in arrows/sequence.
     visible = [r for r in AGENT_REGISTRY if not _disabled(r["key"])]
 
-    # Orchestrator dispatch arrows
-    lines.append("    %% Dispatch flow")
-    for reg in visible:
-        nid = _node_id(reg["agent"])
-        lines.append(f"    ORCH -.->|\"Phase {reg['phase']}\"| {nid}")
+    # Orchestrator head edge: a single spine into the first phase (ADR-011).
+    # Phase order is conveyed by numbering + the sequence chain below.
+    if visible:
+        lines.append("    %% Pipeline head")
+        lines.append(f"    ORCH --> {_node_id(visible[0]['agent'])}")
 
     # Phase sequence arrows
     lines.append("")
@@ -154,7 +148,9 @@ def generate_mermaid(
         "    classDef pending fill:#21262d,stroke:#30363d,color:#8b949e",
     ])
 
-    # Apply status styles to individual nodes (enabled phases only)
+    # Apply status styles to individual nodes (enabled phases only).
+    # Subagent status: trace entry is the source of truth; a completed phase
+    # implies its subagents finished; otherwise pending (detailed-design §2).
     for reg in visible:
         key = reg["key"]
         phase_info = phases.get(key, {})
@@ -164,9 +160,17 @@ def generate_mermaid(
         lines.append(f"    class {nid} {cls}")
         for sub in reg["subagents"]:
             sub_nid = _node_id(sub)
-            sub_status = status if status == "complete" else "pending"
-            if sub in trace_map:
-                sub_status = trace_map[sub].get("status", "pending")
+            trace_entry = trace_map.get(sub)
+            if trace_entry is not None and trace_entry.get("status") in (
+                "complete",
+                "in_progress",
+                "pending",
+            ):
+                sub_status: str = trace_entry["status"]
+            elif status == "complete":
+                sub_status = "complete"
+            else:
+                sub_status = "pending"
             lines.append(f"    class {sub_nid} {_status_class(sub_status)}")
 
     return "\n".join(lines)
