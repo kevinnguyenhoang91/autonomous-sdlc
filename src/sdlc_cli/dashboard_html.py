@@ -8,6 +8,7 @@ DASHBOARD_HTML = """\
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SDLC Agent Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
 <style>
   :root {
     --bg: #0d1117; --bg2: #161b22; --bg3: #21262d;
@@ -147,6 +148,28 @@ DASHBOARD_HTML = """\
 
   /* Last updated */
   .last-updated { font-size: 11px; color: var(--dim); margin-top: 8px; }
+
+  /* Diagram container styles */
+  #mermaidDiagram {
+    position: relative; width: 100%; height: 600px; overflow: hidden;
+    border: 1px solid var(--border); border-radius: 4px;
+  }
+  #mermaidDiagram svg {
+    width: 100%; height: 100%; display: block;
+  }
+  .diagram-controls {
+    position: absolute; top: 12px; right: 12px; display: flex; gap: 4px;
+    z-index: 10; background: rgba(13, 17, 23, 0.9); padding: 8px; border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+  .diagram-btn {
+    background: var(--bg3); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 10px; border-radius: 3px; cursor: pointer; font-size: 12px;
+    transition: background 0.2s, border-color 0.2s;
+  }
+  .diagram-btn:hover {
+    background: var(--border); border-color: var(--blue);
+  }
 </style>
 </head>
 <body>
@@ -215,10 +238,17 @@ DASHBOARD_HTML = """\
   </div>
 
   <!-- Full width: Mermaid agent interaction diagram -->
-  <div class="card" style="grid-column: 1 / -1;">
+  <div class="card" style="grid-column: 1 / -1; display: flex; flex-direction: column;">
     <div class="card-title">Agent Interaction Diagram</div>
-    <div id="mermaidDiagram" style="overflow-x:auto; padding:12px;">
-      <span class="no-data">Loading diagram...</span>
+    <div style="position: relative; flex: 1; min-height: 600px;">
+      <div id="mermaidDiagram">
+        <span class="no-data">Loading diagram...</span>
+      </div>
+      <div class="diagram-controls" id="diagramControls" style="display: none;">
+        <button class="diagram-btn" id="zoomInBtn" title="Zoom In (Scroll Up)">+ Zoom In</button>
+        <button class="diagram-btn" id="zoomOutBtn" title="Zoom Out (Scroll Down)">- Zoom Out</button>
+        <button class="diagram-btn" id="resetBtn" title="Reset Pan & Zoom">Reset</button>
+      </div>
     </div>
   </div>
 </div>
@@ -609,6 +639,8 @@ try {
 } catch(e) { console.warn('Mermaid not loaded:', e); }
 
 let lastMermaidSrc = '';
+let svgPanZoomInstance = null;
+
 async function renderMermaid(src) {
   const el = document.getElementById('mermaidDiagram');
   if (!src) {
@@ -624,9 +656,49 @@ async function renderMermaid(src) {
   try {
     const { svg } = await mermaid.render('agentDiagram', src);
     el.innerHTML = svg;
+
+    // Initialize pan/zoom on the rendered SVG
+    const svgElement = el.querySelector('svg');
+    if (svgElement) {
+      // Cleanup previous instance if exists
+      if (svgPanZoomInstance) {
+        svgPanZoomInstance.destroy();
+      }
+
+      // Make SVG properly sized for pan/zoom
+      svgElement.setAttribute('width', '100%');
+      svgElement.setAttribute('height', '100%');
+
+      // Initialize SVG-PanZoom
+      svgPanZoomInstance = svgPanZoom(svgElement, {
+        zoomEnabled: true,
+        controlIconsEnabled: false,
+        fit: true,
+        center: true,
+        minZoom: 0.5,
+        maxZoom: 10,
+        beforeZoom: function() { return true; }
+      });
+
+      // Show diagram controls
+      document.getElementById('diagramControls').style.display = 'flex';
+
+      // Attach button handlers
+      document.getElementById('zoomInBtn').onclick = () => {
+        svgPanZoomInstance.zoomIn();
+      };
+      document.getElementById('zoomOutBtn').onclick = () => {
+        svgPanZoomInstance.zoomOut();
+      };
+      document.getElementById('resetBtn').onclick = () => {
+        svgPanZoomInstance.resetZoom();
+        svgPanZoomInstance.center();
+      };
+    }
   } catch(e) {
     console.error('Mermaid render error:', e);
     el.innerHTML = '<span class="no-data">Diagram render error. Check console.</span>';
+    document.getElementById('diagramControls').style.display = 'none';
   }
 }
 
