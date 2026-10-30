@@ -197,7 +197,7 @@ function inferPhasesFromActivity(lines) {
   for (const l of lines) {
     const pm = l.match(/Phase\s+(\d+)\s*[:\-]/i);
     if (pm) {
-      const n = parseInt(pm[1]);
+      const n = parseInt(pm[1], 10);
       if (curPhase !== null && curPhase !== n) result[curPhase] = 'complete';
       curPhase = n;
       result[n] = 'in_progress';

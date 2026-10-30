@@ -93,7 +93,7 @@ def _continuity_reports_complete(text: str) -> bool:
                 stripped = candidate.strip()
                 if not stripped:
                     continue
-                return "complete" in stripped.lower()
+                return re.search(r"\bcomplete\b", stripped, re.IGNORECASE) is not None
             return False
     return False
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from sdlc_cli.continuity import check_freshness
+from sdlc_cli.continuity import _continuity_reports_complete, check_freshness
 
 
 def _make_run(
@@ -265,6 +265,12 @@ def test_completed_continuity_but_orchestrator_still_in_progress_is_stale(
     )
     result = check_freshness(run_dir)
     assert result.status == "stale"
+
+
+def test_incomplete_is_not_treated_as_complete() -> None:
+    """'incomplete' contains the substring 'complete' but is not a terminal state."""
+    assert not _continuity_reports_complete("## Current Phase\nPhase 3 incomplete\n")
+    assert _continuity_reports_complete("## Current Phase\nPROJECT COMPLETE\n")
 
 
 def test_never_writes_any_file(tmp_path: Path) -> None:
